@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Leak-protection gate: blocks commits containing secrets or personal
+# 3090-infra content. Install: git config core.hooksPath .githooks
+set -euo pipefail
+
+fail=0
+while IFS= read -r f; do
+  case "$f" in
+    .githooks/*|.github/workflows/leak-gate.yml|.gitignore) continue ;;
+    # ^ these contain only the scanner's literal rule text, never real secrets
+  esac
+  if grep -nE -i \
+      -e 'ghp_[A-Za-z0-9]{20,}' \
+      -e 'github_pat_[A-Za-z0-9_]{20,}' \
+      -e 'sk-[A-Za-z0-9]{20,}' \
+      -e 'AKIA[0-9A-Z]{16}' \
+      -e 'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY' \
+      -e '/home/george' \
+      -e '3090_infra' \
+      -e 'george_corpus' \
+      -e '192\.168\.[0-9]+\.[0-9]+' \
+      -e '100\.[0-9]+\.[0-9]+\.[0-9]+' \
+      "$f" >/dev/null 2>&1; then
+    echo "BLOCKED: $f matches a secret/infra-leak pattern:" >&2
+    grep -nE -i \
+      -e 'ghp_[A-Za-z0-9]{20,}' \
+      -e 'github_pat_[A-Za-z0-9_]{20,}' \
+      -e 'sk-[A-Za-z0-9]{20,}' \
+      -e 'AKIA[0-9A-Z]{16}' \
+      -e 'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY' \
+      -e '/home/george' \
+      -e '3090_infra' \
+      -e 'george_corpus' \
+      -e '192\.168\.[0-9]+\.[0-9]+' \
+      -e '100\.[0-9]+\.[0-9]+\.[0-9]+' \
+      "$f" | head -5 >&2
+    fail=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+if [ "$fail" -ne 0 ]; then
+  echo "Commit rejected by leak gate (.githooks/pre-commit)." >&2
+  exit 1
+fi
