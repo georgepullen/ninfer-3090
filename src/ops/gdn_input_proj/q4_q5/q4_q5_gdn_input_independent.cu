@@ -77,20 +77,6 @@ void launch_q4(const Tensor& x, const Weight& weight, Tensor& out, cudaStream_t 
     throw std::invalid_argument("Q4/Q5 GDN independent launch requires T in [1,16]");
 }
 
-void launch_q5_gemv(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
-                    cudaStream_t stream) {
-    constexpr int kRowsPerBlock = 16;
-    constexpr int kThreads      = kRowsPerBlock * 32;
-    q5_rowsplit_gemv_kernel<kValueZRows, kHidden, kRowsPerBlock, 2, true, false, true, kValueRows>
-        <<<kValueZRows / kRowsPerBlock, kThreads, 0, stream>>>(
-            static_cast<const __nv_bfloat16*>(x.data),
-            static_cast<const std::uint8_t*>(weight.qdata),
-            static_cast<const std::uint8_t*>(weight.qhigh),
-            static_cast<const std::uint8_t*>(weight.scales),
-            static_cast<__nv_bfloat16*>(value.data), static_cast<__nv_bfloat16*>(z.data));
-    CUDA_CHECK(cudaGetLastError());
-}
-
 template <int Cols>
 void launch_q5_split4(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
                       cudaStream_t stream) {
@@ -111,6 +97,9 @@ void launch_q5_split4(const Tensor& x, const Weight& weight, Tensor& value, Tens
 void launch_q5_split4_exact(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
                             cudaStream_t stream) {
     switch (x.ne[1]) {
+    case 1:
+        launch_q5_split4<1>(x, weight, value, z, stream);
+        return;
     case 2:
         launch_q5_split4<2>(x, weight, value, z, stream);
         return;
@@ -153,10 +142,6 @@ void launch_q5_simt_r8_c8(const Tensor& x, const Weight& weight, Tensor& value, 
 
 void launch_q5(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
                cudaStream_t stream) {
-    if (x.ne[1] == 1) {
-        launch_q5_gemv(x, weight, value, z, stream);
-        return;
-    }
     if (x.ne[1] <= 6) {
         launch_q5_split4_exact(x, weight, value, z, stream);
         return;

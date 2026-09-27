@@ -92,21 +92,6 @@ void launch_q4(const Tensor& x, const Weight& weight, Tensor& q, Tensor& key, cu
     }
 }
 
-void launch_q5_gemv(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& value,
-                    cudaStream_t stream) {
-    constexpr int kRowsPerBlock = 16;
-    constexpr int kBlockThreads = kRowsPerBlock * 32;
-    constexpr int kGrid         = kParentRows / kRowsPerBlock;
-    q5_rowsplit_gemv_kernel<kParentRows, kHidden, kRowsPerBlock, 2, true, false, true, kSplitRow>
-        <<<kGrid, kBlockThreads, 0, stream>>>(static_cast<const __nv_bfloat16*>(x.data),
-                                              static_cast<const std::uint8_t*>(weight.qdata),
-                                              static_cast<const std::uint8_t*>(weight.qhigh),
-                                              static_cast<const std::uint8_t*>(weight.scales),
-                                              static_cast<__nv_bfloat16*>(gate.data),
-                                              static_cast<__nv_bfloat16*>(value.data));
-    CUDA_CHECK(cudaGetLastError());
-}
-
 template <int Cols>
 void launch_q5_split4(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& value,
                       cudaStream_t stream) {
@@ -126,6 +111,9 @@ void launch_q5_split4(const Tensor& x, const Weight& weight, Tensor& gate, Tenso
 void launch_q5_split4_exact(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& value,
                             cudaStream_t stream) {
     switch (x.ne[1]) {
+    case 1:
+        launch_q5_split4<1>(x, weight, gate, value, stream);
+        return;
     case 2:
         launch_q5_split4<2>(x, weight, gate, value, stream);
         return;
@@ -167,10 +155,6 @@ void launch_q5_simt(const Tensor& x, const Weight& weight, Tensor& gate, Tensor&
 
 void launch_q5(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& value,
                cudaStream_t stream) {
-    if (x.ne[1] == 1) {
-        launch_q5_gemv(x, weight, gate, value, stream);
-        return;
-    }
     if (x.ne[1] <= 6) {
         launch_q5_split4_exact(x, weight, gate, value, stream);
         return;
