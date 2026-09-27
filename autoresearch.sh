@@ -2,11 +2,13 @@
 # Deterministic benchmark harness: NInfer-3090 Qwen3.8-27B (groupwise-int) token
 # throughput on one RTX 3090.
 #
-# Primary metric:  decode_tps           - tg256 decode output tokens/s through the
-#                                       public Engine with MTP3 + optimized draft
-#                                       head (every accepted token is validated by
-#                                       the target model logits).
-# Secondary:       decode_tps_plain     - tg256 without speculation.
+# Primary metric:  decode_tps_plain     - tg256 decode output tokens/s without
+#                                       speculation; deterministic and independent of
+#                                       MTP acceptance trajectory.
+# Secondary:       decode_tps           - tg256 decode output tokens/s with MTP3 +
+#                                       optimized draft head (every accepted token is
+#                                       validated by the target model logits); the
+#                                       shipped fast path, but trajectory-sensitive.
 #                  prefill_tps          - pp512 prefill tokens/s.
 #                  mtp_acceptance_rate  - drafted tokens accepted per round window.
 #
@@ -102,8 +104,11 @@ prefill = test(plain, "pp512")
 
 acceptance = decode["speculative"]["acceptance_rate"]
 
-print(f"METRIC decode_tps={stat(decode, 'decode_output_tok_s'):.2f}")
+# decode_tps_plain is the decision metric: deterministic per-kernel, no
+# acceptance-trajectory lottery. decode_tps (MTP3, product fast path) is reported
+# alongside with its acceptance rate.
 print(f"METRIC decode_tps_plain={stat(plain_decode, 'decode_output_tok_s'):.2f}")
+print(f"METRIC decode_tps={stat(decode, 'decode_output_tok_s'):.2f}")
 print(f"METRIC prefill_tps={stat(prefill, 'prefill_tok_s'):.2f}")
 if acceptance is not None:
     print(f"METRIC mtp_acceptance_rate={acceptance:.4f}")
