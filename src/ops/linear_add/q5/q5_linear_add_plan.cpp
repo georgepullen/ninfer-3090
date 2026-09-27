@@ -36,18 +36,16 @@ constexpr std::array<SupportSpec, 2> kSupports{{
     {5120, 17408, 17408},
 }};
 
-constexpr std::array<RouteSpec, 6> kK6144Routes{{
-    {{1, 1}, Q5LinearAddScheduleId::GemvResidual},
-    {{2, 13}, Q5LinearAddScheduleId::Split2ExactResidual},
+constexpr std::array<RouteSpec, 5> kK6144Routes{{
+    {{1, 13}, Q5LinearAddScheduleId::Split4ExactResidual},
     {{14, 32}, Q5LinearAddScheduleId::MmaResidualR64C16},
     {{33, 48}, Q5LinearAddScheduleId::MmaResidualR64C24},
     {{49, 128}, Q5LinearAddScheduleId::MmaResidualR64C64},
     {{129, kAnyCols}, Q5LinearAddScheduleId::MmaResidualR64C128},
 }};
 
-constexpr std::array<RouteSpec, 6> kK17408Routes{{
-    {{1, 1}, Q5LinearAddScheduleId::GemvResidual},
-    {{2, 16}, Q5LinearAddScheduleId::Split2ExactResidual},
+constexpr std::array<RouteSpec, 5> kK17408Routes{{
+    {{1, 16}, Q5LinearAddScheduleId::Split4ExactResidual},
     {{17, 32}, Q5LinearAddScheduleId::MmaResidualR64C16},
     {{33, 48}, Q5LinearAddScheduleId::MmaResidualR64C24},
     {{49, 128}, Q5LinearAddScheduleId::MmaResidualR64C64},
@@ -82,10 +80,8 @@ bool supported_shape(const Q5LinearAddProblem& problem) noexcept {
 
 const char* q5_linear_add_schedule_name(Q5LinearAddScheduleId schedule) noexcept {
     switch (schedule) {
-    case Q5LinearAddScheduleId::GemvResidual:
-        return "linear_add.q5.gemv.residual";
-    case Q5LinearAddScheduleId::Split2ExactResidual:
-        return "linear_add.q5.simt.split2.exact.residual";
+    case Q5LinearAddScheduleId::Split4ExactResidual:
+        return "linear_add.q5.simt.split4.exact.residual";
     case Q5LinearAddScheduleId::MmaResidualR64C16:
         return "linear_add.q5.mma.r64.c16.cta_collective_residual";
     case Q5LinearAddScheduleId::MmaResidualR64C24:
@@ -138,11 +134,8 @@ void q5_linear_add_execute_plan(const Q5LinearAddPlan& plan, const Tensor& x, co
     (void)ws;
 
     switch (plan.schedule) {
-    case Q5LinearAddScheduleId::GemvResidual:
-        q5_linear_add_gemv_residual_launch(x, w, residual_out, stream);
-        return;
-    case Q5LinearAddScheduleId::Split2ExactResidual:
-        q5_linear_add_split2_exact_launch(x, w, residual_out, stream);
+    case Q5LinearAddScheduleId::Split4ExactResidual:
+        q5_linear_add_split4_exact_launch(x, w, residual_out, stream);
         return;
     case Q5LinearAddScheduleId::MmaResidualR64C16:
         q5_linear_add_mma_r64_c16_launch(x, w, residual_out, stream);

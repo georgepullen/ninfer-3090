@@ -199,7 +199,6 @@ add_library(ninfer_ops STATIC
   ops/linear_add/fp8/fp8_linear_add_plan.cpp
   ops/linear_add/q5/q5_linear_add_gemm_mma.cu
   ops/linear_add/q5/q5_linear_add_gemm_simt.cu
-  ops/linear_add/q5/q5_linear_add_gemv.cu
   ops/linear_add/q5/q5_linear_add_plan.cpp
   ops/linear_add/w8/w8_linear_add_gemm_mma.cu
   ops/linear_add/w8/w8_linear_add_gemm_simt.cu

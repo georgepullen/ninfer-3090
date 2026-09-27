@@ -278,6 +278,25 @@ struct Q5Split4StoreEpilogue {
     }
 };
 
+// In-place residual epilogue for the split4 kernel: out[t * out_ld + row] holds the
+// residual on entry and receives (partial-sum + residual) on exit. Tokens matches the
+// kernel's compile-time token tile so every output column is covered.
+struct Q5Split4AddResidualEpilogue {
+    template <bool SplitOutput, int SplitRow, int Tokens>
+    __device__ __forceinline__ void
+    operator()(__nv_bfloat16* out, __nv_bfloat16* out_tail, std::int32_t n, std::int32_t out_ld,
+               std::int32_t row, const float (&values)[Tokens]) const {
+        static_assert(!SplitOutput, "residual epilogue writes the primary output only");
+        (void)out_tail;
+        (void)n;
+#pragma unroll
+        for (int token = 0; token < Tokens; ++token) {
+            const std::int64_t index = static_cast<std::int64_t>(token) * out_ld + row;
+            out[index] = __float2bfloat16(values[token] + __bfloat162float(out[index]));
+        }
+    }
+};
+
 template <class SC, int kTt, int kFullSlabs, int kStride, bool SplitOutput = false,
           int SplitRow = 0, class Epilogue = Q5Split4StoreEpilogue, bool TriggerPdl = false,
           bool JoinPdl = false>
