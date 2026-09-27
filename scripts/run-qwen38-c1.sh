@@ -26,4 +26,4 @@ exec "$server" "$model" \
   --max-context 65536 --kv-capacity 65536 \
   --max-concurrency 1 --max-pending-requests 16 \
   --prefill-chunk 1024 --kv-dtype int8 \
-  --spec mtp --draft-tokens 3 --lm-head-draft
+  --spec mtp --draft-tokens 1 --lm-head-draft

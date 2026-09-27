@@ -54,7 +54,7 @@ trap 'rm -rf "$OUT"' EXIT
   --weights "$WEIGHTS" \
   --corpus "$CORPUS" \
   -n 256 \
-  --mtp-draft-tokens 3 \
+  --mtp-draft-tokens 1 \
   --lm-head-draft \
   --kv-dtype int8 \
   --max-ctx 4096 \
