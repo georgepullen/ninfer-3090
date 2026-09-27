@@ -34,3 +34,5 @@ a2a_hub/
 autoresearch/
 artifacts/local/
 *.local.md
+__pycache__/
+*.pyc
