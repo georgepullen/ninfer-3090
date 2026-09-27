@@ -31,9 +31,10 @@ struct RouteSpec {
 
 constexpr Q4LinearSwiGluProblem kShape{34816, 17408, 5120, 5120, 1};
 
-constexpr std::array<RouteSpec, 10> kRoutes{{
+constexpr std::array<RouteSpec, 11> kRoutes{{
     {{1, 1}, Q4LinearSwiGluScheduleId::GemvPair},
-    {{2, 32}, Q4LinearSwiGluScheduleId::SmallTExact},
+    {{2, 4}, Q4LinearSwiGluScheduleId::SimtSplit4PairExact},
+    {{5, 32}, Q4LinearSwiGluScheduleId::SmallTExact},
     {{33, 40}, Q4LinearSwiGluScheduleId::MmaSplitHalfPairR32C40},
     {{41, 48}, Q4LinearSwiGluScheduleId::MmaSplitHalfPairR32C48},
     {{49, 128}, Q4LinearSwiGluScheduleId::Materialized},
@@ -79,6 +80,8 @@ const char* q4_linear_swiglu_schedule_name(Q4LinearSwiGluScheduleId schedule) no
     switch (schedule) {
     case Q4LinearSwiGluScheduleId::GemvPair:
         return "linear_swiglu.q4.gemv.paired_rows";
+    case Q4LinearSwiGluScheduleId::SimtSplit4PairExact:
+        return "linear_swiglu.q4.simt.split4.paired_rows.exact";
     case Q4LinearSwiGluScheduleId::SmallTExact:
         return "linear_swiglu.q4.mma.small_t.exact";
     case Q4LinearSwiGluScheduleId::MmaSplitHalfPairR32C40:
@@ -111,6 +114,7 @@ Q4LinearSwiGluPlan q4_linear_swiglu_resolve_plan(const Q4LinearSwiGluProblem& pr
         };
         switch (route.schedule) {
         case Q4LinearSwiGluScheduleId::GemvPair:
+        case Q4LinearSwiGluScheduleId::SimtSplit4PairExact:
         case Q4LinearSwiGluScheduleId::SmallTExact:
         case Q4LinearSwiGluScheduleId::MmaSplitHalfPairR32C40:
         case Q4LinearSwiGluScheduleId::MmaSplitHalfPairR32C48:
@@ -157,6 +161,9 @@ void q4_linear_swiglu_execute_plan(const Q4LinearSwiGluPlan& plan, const Tensor&
     switch (plan.schedule) {
     case Q4LinearSwiGluScheduleId::GemvPair:
         q4_linear_swiglu_gemv_pair_launch(x, w, out, stream);
+        return;
+    case Q4LinearSwiGluScheduleId::SimtSplit4PairExact:
+        q4_linear_swiglu_split4_pair_launch(x, w, out, stream);
         return;
     case Q4LinearSwiGluScheduleId::SmallTExact:
         q4_linear_swiglu_small_t_exact_launch(x, w, out, stream);
