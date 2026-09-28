@@ -27,6 +27,48 @@ FP8 E4M3 *KV-cache* profile is not: its attention kernels have no SM86 implement
 
 The goal is the make the utmost rippin Qwen inference stack for the 3000 series. Gladly taking PR's, all help much appreciated. 
 
+## Decode optimization results and methods
+
+This fork tunes the SM86 decode path for single-request throughput on Qwen3.8-27B. All numbers
+come from the public `ninfer_bench` route on one RTX 3090 (CUDA 13.4, GCC 13, `sm_86`): 256
+generated tokens per repetition, three repetitions after one warmup, greedy decoding, INT8
+group-64 KV, CUDA Graphs on, fixed corpus slices. Before and after were measured in one session
+on the same build base.
+
+| Path | Before | After | Change |
+|---|---:|---:|---:|
+| Plain decode, no speculation | 38.9 tok/s | 43.5 tok/s | +11.8% |
+| MTP decode, shipped launcher config | 52.9 tok/s (draft window 3) | 60.6 tok/s (draft window 1) | +14.7% |
+| Prefill, 512 prompt tokens | 963 tok/s | 962 tok/s | unchanged |
+
+Three changes produced the gains.
+
+1. Split4 small-token GEMV routes. Decode GEMVs at one to four tokens previously ran on one-warp
+   gemv kernels or on a 16-row MMA tile whose cost was flat in the token count. These now run on
+   split4 kernels: one output row per CTA, four warps splitting the K extent, the exact token
+   count held in register accumulators, and every weight byte read from DRAM exactly once. The q5
+   linear-add kernel gained an in-place residual epilogue. Cold-cache per-call times at the
+   registered shapes: MLP down projection 93.2 to 76.8 us, output projections 40.8 to 32.8 us,
+   GDN input projection 91.1 to 75.8 us, attention input projection 81.9 to 72.7 us.
+2. New q4 SwiGLU split4 kernel for one to four tokens. It replaces a 16-row MMA small-T route
+   that cost about 210 us at every token count above one. The kernel keeps one gate/up row pair
+   per CTA, decodes q4 nibbles with the fp16 exponent trick (flip each nibble sign bit, set the
+   fp16 exponent, subtract 1032; exact), software-pipelines the next slab's loads past the
+   current slab's multiply-accumulate, and removes the old gemv file. T=2 fell from 205.8 to
+   117.5 us, T=4 from 210 to 147.4 us.
+3. MTP draft window 3 to 1. Every accepted token is still verified against the target model.
+   After the kernel work, T=2 verification costs little more than T=1, so one draft token at 0.64
+   acceptance outperforms three at 0.38. The launchers (`run-qwen38-c1.sh`, `run-qwen38-c8.sh`)
+   and the Linux guide examples pass `--draft-tokens 1`.
+
+Measured and rejected: cp.async staging inside split4 (4-byte issue overhead exceeded the latency
+it hid), register prefetch pipelines (register spills at 16 tokens), higher occupancy, and PDL
+overlap of the two input-projection kernels at T=1. The GEMV family now runs at 78 to 92 percent
+of DRAM roofline by shape, and the output head runs at 94 percent. Op conformance tests
+(`ninfer_linear_add_q5_a16_test`, `ninfer_linear_swiglu_q4_a16_test`, `ninfer_attn_input_proj_test`,
+`ninfer_gdn_input_proj_test`) cover every rerouted path, and each kept change was verified end to
+end through the same bench route.
+
 Release notes for this branch: [v0.6.1](RELEASE_NOTES_0.6.1.md).
 
 ## Choose a platform
@@ -107,7 +149,7 @@ batching accelerates decode, but does not multiply prompt ingestion. Consequentl
 844-862 input tok/s while queued requests increase mean TTFT. `Active-prefill speed` excludes queue
 waiting and measures only the server's recorded prefill phase.
 
-### RotorQuant KV (`rk8v4`) — currently unavailable
+### RotorQuant KV (`rk8v4`) is currently unavailable
 
 `rk8v4` was an experimental, opt-in KV-cache mode for Qwen3.8-27B that applied a normalized
 transform to queries and keys, rotated values before four-bit storage, and reversed the value
@@ -161,7 +203,7 @@ Windows archive includes `run-qwen36-35b-vision.bat` for this profile.
 
 The safe RTX 3090 profile is **one request, 32K maximum context, INT8 KV, vision enabled, and MTP
 disabled**. A current v0.6 test processed three 1,920×1,080 images correctly. Each image expanded
-to a 2,081-token prompt; engine TTFT was 3.76–4.07 seconds, decode was about 159 tok/s, and peak
+to a 2,081-token prompt; engine TTFT was 3.76-4.07 seconds, decode was about 159 tok/s, and peak
 VRAM was 23,944 MiB. This leaves little room for another GPU workload.
 
 MTP is intentionally off for this profile. At 32K, speculative recurrent state would exceed the
