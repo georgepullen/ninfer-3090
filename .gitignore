@@ -36,3 +36,4 @@ artifacts/local/
 *.local.md
 __pycache__/
 *.pyc
+build-sm86
