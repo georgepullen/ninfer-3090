@@ -12,11 +12,13 @@ jobs:
           set -euo pipefail
           pat='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|/home/george|3090_infra|george_corpus|192\.168\.[0-9]+\.[0-9]+|100\.[0-9]+\.[0-9]+\.[0-9]+)'
           # whole history of changed files vs upstream main is heavy; scan full tree + last 50 commits' patches
-          if grep -rInE "$pat" . --exclude-dir=.git --exclude-dir=.githooks; then
+          # the scanner, the pre-commit hook, and .gitignore carry the rule text itself, so they are excluded
+          # exactly like the pre-commit hook excludes them
+          if grep -rInE "$pat" . --exclude-dir=.git --exclude-dir=.githooks --exclude=leak-gate.yml --exclude=.gitignore; then
             echo "::error::Leak pattern found in working tree"
             exit 1
           fi
-          if git log -50 -p | grep -InE "$pat"; then
+          if git log -50 -p -- . ':(exclude).githooks' ':(exclude).github/workflows/leak-gate.yml' ':(exclude).gitignore' | grep -InE "$pat"; then
             echo "::error::Leak pattern found in recent commits"
             exit 1
           fi
